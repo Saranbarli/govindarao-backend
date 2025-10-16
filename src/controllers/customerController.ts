@@ -1,48 +1,66 @@
 import { Request, Response } from "express";
-import Customer from "../models/customerModel";
+import Customer from "../models/Customer";
 
-// @desc Create or update customer profile
-export const saveCustomerProfile = async (req: Request, res: Response) => {
+// ✅ Get all customers (latest first)
+export const getAllCustomers = async (req: Request, res: Response) => {
   try {
-    const { name, phone, address } = req.body;
-    let photo = req.body.photo;
-
-    if (req.file) {
-      photo = `/uploads/${req.file.filename}`;
-    }
-
-    const existing = await Customer.findOne({ user: req.user!._id });
-
-    if (existing) {
-      existing.name = name;
-      existing.phone = phone;
-      existing.address = address;
-      if (photo) existing.photo = photo;
-      await existing.save();
-      return res.json(existing);
-    } else {
-      const customer = await Customer.create({
-        user: req.user!._id,
-        name,
-        phone,
-        address,
-        photo,
-        email: req.user!.email,
-      });
-      return res.status(201).json(customer);
-    }
+    const customers = await Customer.find().sort({ createdAt: -1 });
+    res.json(customers);
   } catch (error) {
-    res.status(500).json({ message: "Failed to save customer profile", error });
+    console.error(error);
+    res.status(500).json({ message: "Error fetching customers" });
   }
 };
 
-// @desc Get logged in customer profile
-export const getCustomerProfile = async (req: Request, res: Response) => {
+// ✅ Add new customer
+export const createCustomer = async (req: Request, res: Response) => {
   try {
-    const profile = await Customer.findOne({ user: req.user!._id });
-    if (!profile) return res.status(404).json({ message: "Profile not found" });
-    res.json(profile);
+    const { name, phone, address } = req.body;
+    const existing = await Customer.findOne({ phone });
+
+    if (existing) {
+      return res.status(400).json({ message: "Customer already exists" });
+    }
+
+    const newCustomer = new Customer({ name, phone, address });
+    await newCustomer.save();
+
+    res.status(201).json(newCustomer);
   } catch (error) {
-    res.status(500).json({ message: "Failed to fetch profile" });
+    console.error(error);
+    res.status(500).json({ message: "Error creating customer" });
+  }
+};
+
+// ✅ Get single customer
+export const getCustomerById = async (req: Request, res: Response) => {
+  try {
+    const customer = await Customer.findById(req.params.id);
+    if (!customer) return res.status(404).json({ message: "Customer not found" });
+    res.json(customer);
+  } catch (error) {
+    res.status(500).json({ message: "Error fetching customer" });
+  }
+};
+
+// ✅ Update customer
+export const updateCustomer = async (req: Request, res: Response) => {
+  try {
+    const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
+    if (!updated) return res.status(404).json({ message: "Customer not found" });
+    res.json(updated);
+  } catch (error) {
+    res.status(500).json({ message: "Error updating customer" });
+  }
+};
+
+// ✅ Delete customer
+export const deleteCustomer = async (req: Request, res: Response) => {
+  try {
+    const deleted = await Customer.findByIdAndDelete(req.params.id);
+    if (!deleted) return res.status(404).json({ message: "Customer not found" });
+    res.json({ message: "Customer deleted" });
+  } catch (error) {
+    res.status(500).json({ message: "Error deleting customer" });
   }
 };
