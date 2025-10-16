@@ -1,43 +1,34 @@
-// backend/src/controllers/productController.ts
 import { Request, Response } from "express";
 import Product from "../models/productModel";
 
-export const getAllProducts = async (req: Request, res: Response) => {
-  const products = await Product.find();
-  res.json(products);
-};
-
-export const getProduct = async (req: Request, res: Response) => {
-  const product = await Product.findById(req.params.id);
-  if (!product) return res.status(404).json({ message: "Product not found" });
-  res.json(product);
-};
-
 export const createProduct = async (req: Request, res: Response) => {
-  const { name, price, description, category, stock, image } = req.body;
-  const product = new Product({ name, price, description, category, stock, image });
-  await product.save();
+  const { name, description, price, image } = req.body;
+  const product = await Product.create({ name, description, price, image });
   res.status(201).json(product);
 };
 
 export const updateProduct = async (req: Request, res: Response) => {
-  const product = await Product.findById(req.params.id);
-  if (!product) return res.status(404).json({ message: "Product not found" });
-
-  product.name = req.body.name ?? product.name;
-  product.price = req.body.price ?? product.price;
-  product.description = req.body.description ?? product.description;
-  product.category = req.body.category ?? product.category;
-  product.stock = req.body.stock ?? product.stock;
-  product.image = req.body.image ?? product.image;
-
-  await product.save();
-  res.json(product);
+  const { id } = req.params;
+  const p = await Product.findByIdAndUpdate(id, req.body, { new: true });
+  if (!p) return res.status(404).json({ message: "Product not found" });
+  res.json(p);
 };
 
 export const deleteProduct = async (req: Request, res: Response) => {
-  const product = await Product.findById(req.params.id);
-  if (!product) return res.status(404).json({ message: "Product not found" });
-  await product.remove();
-  res.json({ message: "Product removed" });
+  const { id } = req.params;
+  const p = await Product.findByIdAndDelete(id);
+  if (!p) return res.status(404).json({ message: "Product not found" });
+  res.json({ message: "Deleted" });
+};
+
+export const listProducts = async (_req: Request, res: Response) => {
+  const products = await Product.find({});
+  res.json(products);
+};
+
+export const getProduct = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const p = await Product.findById(id);
+  if (!p) return res.status(404).json({ message: "Not Found" });
+  res.json(p);
 };

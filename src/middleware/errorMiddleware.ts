@@ -1,16 +1,14 @@
-// backend/src/middleware/errorMiddleware.ts
 import { Request, Response, NextFunction } from "express";
 
-export const notFound = (req: Request, res: Response, next: NextFunction) => {
-  const err = new Error(`Not Found - ${req.originalUrl}`);
-  res.status(404);
-  next(err);
+export const notFound = (_req: Request, res: Response, _next: NextFunction) => {
+  res.status(404).json({ message: "Not Found" });
 };
 
-export const errorHandler = (err: any, req: Request, res: Response, next: NextFunction) => {
-  const status = res.statusCode === 200 ? 500 : res.statusCode;
+export const errorHandler = (err: any, _req: Request, res: Response, _next: NextFunction) => {
+  console.error(err);
+  const status = err.status || 500;
   res.status(status).json({
-    message: err.message,
-    stack: process.env.NODE_ENV === "production" ? "🥞" : err.stack,
+    message: err.message || "Server Error",
+    stack: process.env.NODE_ENV === "production" ? undefined : err.stack
   });
 };

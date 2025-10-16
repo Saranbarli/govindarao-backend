@@ -1,76 +1,72 @@
-// backend/src/controllers/orderController.ts
 import { Request, Response } from "express";
 import Order from "../models/orderModel";
 import Product from "../models/productModel";
-import mongoose from "mongoose";
 
-/**
- * Create order:
- * Body: { customer (optional), items: [{ productId, qty }], placedBy? }
- * This endpoint will populate product snapshot (price at order time).
- */
+// Create order: attach customer from req.user
 export const createOrder = async (req: Request, res: Response) => {
-  const { customer, items, placedBy } = req.body;
+  if (!req.user) return res.status(401).json({ message: "Not authorized" });
+  const { items, placedBy } = req.body as { items: { product: string; qty: number }[]; placedBy?: string };
 
-  if (!Array.isArray(items) || items.length === 0) {
-    return res.status(400).json({ message: "Order items required" });
-  }
-
-  // Build order items with price snapshot
-  const builtItems = await Promise.all(
-    items.map(async (it: { productId: string; qty: number }) => {
-      if (!mongoose.Types.ObjectId.isValid(it.productId)) {
-        throw new Error("Invalid product id");
-      }
-      const p = await Product.findById(it.productId);
-      if (!p) throw new Error(`Product not found: ${it.productId}`);
-      return {
-        product: p._id,
-        qty: it.qty,
-        price: p.price,
-      };
+  // compute totals and store prices snapshot
+  const orderItems = await Promise.all(
+    items.map(async (it) => {
+      const prod = await Product.findById(it.product);
+      if (!prod) throw new Error("Product not found: " + it.product);
+      return { product: prod._id, qty: it.qty, price: prod.price };
     })
   );
 
-  const total = builtItems.reduce((sum: number, it: any) => sum + it.price * it.qty, 0);
+  const total = orderItems.reduce((s, it) => s + it.price * it.qty, 0);
 
-  const order = new Order({
-    customer,
-    items: builtItems,
-    totalAmount: total,
-    placedBy: placedBy || "customer",
+  const order = await Order.create({
+    customer: req.user._id,
+    items: orderItems,
+    total,
+    status: "pending",
+    placedBy: placedBy === "admin" ? "admin" : "customer"
   });
 
-  await order.save();
-  // populate product details for response
-  await order.populate("items.product", "name price image");
   res.status(201).json(order);
 };
 
-export const getOrder = async (req: Request, res: Response) => {
-  const order = await Order.findById(req.params.id).populate("items.product", "name price image").populate("customer", "name email");
+export const getOrdersForUser = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Not authorized" });
+  // if admin, list all
+  if (req.user.role === "admin") {
+    const orders = await Order.find({})
+      .populate("customer", "name email")
+      .populate("items.product", "name price image");
+    return res.json(orders);
+  }
+
+  const orders = await Order.find({ customer: req.user._id })
+    .populate("items.product", "name price image")
+    .populate("customer", "name email");
+  res.json(orders);
+};
+
+export const getOrderById = async (req: Request, res: Response) => {
+  const { id } = req.params;
+  const order = await Order.findById(id)
+    .populate("customer", "name email")
+    .populate("items.product", "name price image");
   if (!order) return res.status(404).json({ message: "Order not found" });
   res.json(order);
 };
 
-// Admin: list all orders
-export const listOrders = async (req: Request, res: Response) => {
-  // admin vs customer filtering should be in middleware or here
-  const orders = await Order.find().populate("items.product", "name price").populate("customer", "name email").sort({ createdAt: -1 });
-  res.json(orders);
-};
-
 export const updateOrderStatus = async (req: Request, res: Response) => {
-  const order = await Order.findById(req.params.id);
+  const { id } = req.params;
+  const { status } = req.body as { status: string };
+  const order = await Order.findById(id);
   if (!order) return res.status(404).json({ message: "Order not found" });
-  order.status = req.body.status ?? order.status;
+  order.status = status as any;
   await order.save();
   res.json(order);
 };
 
 export const deleteOrder = async (req: Request, res: Response) => {
-  const order = await Order.findById(req.params.id);
+  const { id } = req.params;
+  const order = await Order.findByIdAndDelete(id);
   if (!order) return res.status(404).json({ message: "Order not found" });
-  await order.remove();
-  res.json({ message: "Order removed" });
+  res.json({ message: "Deleted" });
 };

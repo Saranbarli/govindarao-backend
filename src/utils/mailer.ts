@@ -1,61 +1,50 @@
-// backend/src/utils/mailer.ts
+// src/utils/mailer.ts
 import nodemailer from "nodemailer";
-import sgTransport from "nodemailer-sendgrid-transport";
-import Mail from "nodemailer/lib/mailer";
+import sgMail from "@sendgrid/mail";
 
-const fromAddress = process.env.EMAIL_FROM || "noreply@govindaraostore.local";
+const useSendGrid = !!process.env.SENDGRID_API_KEY;
+const emailFrom = process.env.EMAIL_FROM || "Govindarao Store <noreply@example.com>";
 
-function createTransport(): Mail {
-  // If SENDGRID_API_KEY is present, use SendGrid transport
-  if (process.env.SENDGRID_API_KEY) {
-    const sgOptions = { auth: { api_key: process.env.SENDGRID_API_KEY } };
-    return nodemailer.createTransport(sgTransport(sgOptions));
-  }
-
-  // Otherwise use SMTP (SMTP_HOST, SMTP_PORT, SMTP_USER, SMTP_PASS)
-  if (process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS) {
-    return nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: Number(process.env.SMTP_PORT || 587),
-      secure: Number(process.env.SMTP_PORT) === 465,
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
-  }
-
-  // Fallback - ethereal for dev if requested
-  if (process.env.NODE_ENV !== "production") {
-    // create a test account automatically
-    // not awaited — returns Promise but nodemailer.createTestAccount is available
-    // We'll keep a simple console fallback
-    const transport = nodemailer.createTransport({
-      host: "smtp.ethereal.email",
-      port: 587,
-      auth: {
-        user: process.env.ETHEREAL_USER || "",
-        pass: process.env.ETHEREAL_PASS || "",
-      },
-    });
-    return transport;
-  }
-
-  throw new Error("No mail transport configured (set SENDGRID_API_KEY or SMTP_ env vars)");
+if (useSendGrid) {
+  sgMail.setApiKey(process.env.SENDGRID_API_KEY!);
 }
 
-export async function sendMail(opts: { to: string; subject: string; html: string; text?: string }) {
-  const transport = createTransport();
-  const mailOptions = {
-    from: fromAddress,
-    to: opts.to,
-    subject: opts.subject,
-    html: opts.html,
-    text: opts.text || undefined,
-  };
+export async function sendEmail(to: string, subject: string, html: string) {
+  if (useSendGrid) {
+    try {
+      await sgMail.send({ to, from: emailFrom, subject, html });
+      return;
+    } catch (sgErr) {
+      // fallback to nodemailer if SendGrid errors
+      // eslint-disable-next-line no-console
+      console.warn("SendGrid failed, falling back to SMTP:", (sgErr as Error).message);
+    }
+  }
 
-  const info = await transport.sendMail(mailOptions);
-  // log or return info
-  console.log("Mail sent:", info && (info as any).messageId);
-  return info;
+  // Use SMTP / nodemailer
+  const host = process.env.SMTP_HOST;
+  const port = process.env.SMTP_PORT ? Number(process.env.SMTP_PORT) : undefined;
+  const user = process.env.SMTP_USER;
+  const pass = process.env.SMTP_PASS;
+
+  if (!host || !port || !user || !pass) {
+    throw new Error("SMTP settings missing and SendGrid not configured");
+  }
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465, // true for 465, false for > 0
+    auth: {
+      user,
+      pass
+    }
+  });
+
+  await transporter.sendMail({
+    from: emailFrom,
+    to,
+    subject,
+    html
+  });
 }

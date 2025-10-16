@@ -1,25 +1,19 @@
-// backend/src/models/productModel.ts
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose, { Document, Schema } from "mongoose";
 
 export interface IProduct extends Document {
   name: string;
   description?: string;
   price: number;
-  category?: string;
-  stock?: number;
   image?: string;
-  createdAt?: Date;
-  updatedAt?: Date;
+  createdAt: Date;
 }
 
-const productSchema: Schema = new Schema(
+const productSchema = new Schema<IProduct>(
   {
     name: { type: String, required: true },
     description: { type: String },
     price: { type: Number, required: true, default: 0 },
-    category: { type: String },
-    stock: { type: Number, default: 0 },
-    image: { type: String },
+    image: { type: String }
   },
   { timestamps: true }
 );

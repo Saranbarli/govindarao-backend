@@ -1,106 +1,102 @@
-// backend/src/controllers/authController.ts
 import { Request, Response } from "express";
+import jwt from "jsonwebtoken";
 import crypto from "crypto";
 import User from "../models/userModel";
 import { generateToken } from "../utils/generateToken";
+import { sendEmail } from "../utils/sendEmail";
 
 export const signup = async (req: Request, res: Response) => {
+  const { name, email, password, role } = req.body;
   try {
-    const { name, email, password, role } = req.body;
-    if (!name || !email || !password) return res.status(400).json({ message: "Missing fields" });
+    const exists = await User.findOne({ email });
+    if (exists) return res.status(400).json({ message: "User already exists" });
 
-    const existing = await User.findOne({ email });
-    if (existing) return res.status(400).json({ message: "User already exists" });
+    const user = await User.create({ name, email, password, role: role || "customer" });
 
-    const user = await User.create({ name, email, password, role: role ?? "customer" });
+    // create email verification token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET!, { expiresIn: "1d" });
+    const verifyUrl = `${process.env.FRONTEND_URL}/verify-email/${token}`;
+    await sendEmail(user.email, "Verify your email", `<p>Click to verify: <a href="${verifyUrl}">${verifyUrl}</a></p>`);
 
-    res.status(201).json({ message: "User created", userId: user._id });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Signup failed" });
+    res.status(201).json({ message: "User created. Check email for verification." });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || "Signup failed" });
+  }
+};
+
+export const verifyEmail = async (req: Request, res: Response) => {
+  const { token } = req.params;
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string };
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+    user.isVerified = true;
+    await user.save();
+    res.json({ message: "Email verified" });
+  } catch (err) {
+    res.status(400).json({ message: "Invalid or expired token" });
   }
 };
 
 export const login = async (req: Request, res: Response) => {
+  const { email, password } = req.body;
   try {
-    const { email, password } = req.body;
-    if (!email || !password) return res.status(400).json({ message: "Missing credentials" });
-
     const user = await User.findOne({ email });
-    if (!user) return res.status(401).json({ message: "Invalid email or password" });
+    if (!user) return res.status(401).json({ message: "Invalid credentials" });
+
+    if (!user.isVerified) return res.status(403).json({ message: "Please verify your email" });
 
     const isMatch = await user.comparePassword(password);
-    if (!isMatch) return res.status(401).json({ message: "Invalid email or password" });
+    if (!isMatch) return res.status(401).json({ message: "Invalid credentials" });
 
-    // Respond with token + role so frontend can route
     res.json({
       _id: user._id,
       name: user.name,
       email: user.email,
       role: user.role,
-      token: generateToken(user._id.toString()),
+      token: generateToken(user._id.toString())
     });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Login failed" });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || "Login failed" });
   }
 };
 
-export const forgotPassword = async (req: Request, res: Response) => {
-  try {
-    const { email } = req.body;
-    if (!email) return res.status(400).json({ message: "Email required" });
+export const getProfile = async (req: Request, res: Response) => {
+  if (!req.user) return res.status(401).json({ message: "Not authorized" });
+  res.json(req.user);
+};
 
+export const forgotPassword = async (req: Request, res: Response) => {
+  const { email } = req.body;
+  try {
     const user = await User.findOne({ email });
-    if (!user) return res.status(404).json({ message: "User not found" });
+    if (!user) return res.status(200).json({ message: "If email exists, a reset link was sent" });
 
     const token = crypto.randomBytes(20).toString("hex");
-    user.resetPasswordToken = token;
-    user.resetPasswordExpires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-    await user.save();
+    // store token in a quick JWT so we don't need a token field — sign with short expiry with user id
+    const jwtToken = jwt.sign({ id: user._id, t: token }, process.env.JWT_SECRET!, { expiresIn: "1h" });
 
-    // NOTE: In production wire this token into an email using nodemailer / SendGrid etc.
-    // For now we return it so you can test quickly (remove in production).
-    res.json({ message: "Reset token generated", resetToken: token });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Could not generate reset token" });
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${jwtToken}`;
+    await sendEmail(user.email, "Password reset", `<p>Reset: <a href="${resetUrl}">${resetUrl}</a></p>`);
+
+    res.json({ message: "If email exists, a reset link was sent" });
+  } catch (err: any) {
+    res.status(500).json({ message: err.message || "Error sending reset email" });
   }
 };
 
 export const resetPassword = async (req: Request, res: Response) => {
+  const { token } = req.params;
+  const { password } = req.body;
   try {
-    const { token } = req.params;
-    const { password } = req.body;
-    if (!token || !password) return res.status(400).json({ message: "Invalid request" });
-
-    const user = await User.findOne({
-      resetPasswordToken: token,
-      resetPasswordExpires: { $gt: new Date() },
-    });
-
-    if (!user) return res.status(400).json({ message: "Invalid or expired token" });
+    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { id: string; t?: string };
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
 
     user.password = password;
-    user.resetPasswordToken = undefined;
-    user.resetPasswordExpires = undefined;
     await user.save();
-
-    res.json({ message: "Password updated successfully" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Reset failed" });
-  }
-};
-
-export const getProfile = async (req: Request & { user?: { id?: string } }, res: Response) => {
-  try {
-    const userId = req.user?.id;
-    if (!userId) return res.status(401).json({ message: "Not authorized" });
-    const user = await User.findById(userId).select("-password -resetPasswordToken -resetPasswordExpires");
-    res.json(user);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Failed to fetch profile" });
+    res.json({ message: "Password updated" });
+  } catch (err: any) {
+    res.status(400).json({ message: "Invalid or expired token" });
   }
 };

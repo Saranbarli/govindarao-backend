@@ -1,52 +1,42 @@
-// backend/src/index.ts
+// src/index.ts
 import express from "express";
-import dotenv from "dotenv";
 import morgan from "morgan";
 import cors from "cors";
 import mongoose from "mongoose";
-import productRoutes from "./routes/productRoutes";
-import orderRoutes from "./routes/orderRoutes";
-import authRoutes from "./routes/authRoutes"; // if you already have auth routes
-import { errorHandler, notFound } from "./middleware/errorMiddleware";
-
-dotenv.config();
+import authRoutes from "./routes/authRoutes.js";
+import productRoutes from "./routes/productRoutes.js";
+import orderRoutes from "./routes/orderRoutes.js";
 
 const app = express();
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-if (process.env.NODE_ENV === "development") app.use(morgan("dev"));
-app.use(cors({ origin: process.env.FRONTEND_URL || "*" }));
 
-// Routes
+app.use(express.json());
+app.use(morgan("dev"));
+app.use(cors());
+
+// API routes
+app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
-app.use("/api/auth", authRoutes); // make sure this file exists (your auth routes)
 
-// Health check
-app.get("/", (_, res) => res.send("🚀 Govindarao Store API"));
+// basic health
+app.get("/api/health", (_req, res) => res.json({ ok: true }));
 
-// Error handlers (fallback)
-app.use(notFound);
-app.use(errorHandler);
-
-const PORT = process.env.PORT || 5000;
-
-// Connect to MongoDB then start
-async function start() {
-  try {
-    const uri = process.env.MONGO_URI!;
-    if (!uri) {
-      throw new Error("MONGO_URI not set in .env");
-    }
-    await mongoose.connect(uri);
-    console.log("✅ MongoDB connected");
-    app.listen(PORT, () => {
-      console.log(`🚀 Server listening on port ${PORT}`);
+// Connect MongoDB
+const MONGO_URI = process.env.MONGO_URI || "";
+if (!MONGO_URI) {
+  // eslint-disable-next-line no-console
+  console.warn("MONGO_URI not set — database won't connect until .env is configured");
+} else {
+  mongoose
+    .connect(MONGO_URI)
+    .then(() => {
+      // eslint-disable-next-line no-console
+      console.log("MongoDB connected");
+    })
+    .catch((err) => {
+      // eslint-disable-next-line no-console
+      console.error("MongoDB connection error:", err);
     });
-  } catch (err) {
-    console.error("Failed to start server:", err);
-    process.exit(1);
-  }
 }
 
-start();
+export default app;

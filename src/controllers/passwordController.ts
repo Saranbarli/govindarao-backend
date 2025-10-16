@@ -1,37 +1,48 @@
 import { Request, Response } from "express";
-import jwt from "jsonwebtoken";
 import User from "../models/userModel";
-import { sendEmail } from "../utils/sendEmail";
+import jwt from "jsonwebtoken";
+import { sendMail } from "../utils/mailer";
 import bcrypt from "bcryptjs";
 
-// @desc Forgot Password - send reset link
 export const forgotPassword = async (req: Request, res: Response) => {
-  const { email } = req.body;
-  const user = await User.findOne({ email });
-  if (!user) return res.status(404).json({ message: "User not found" });
+  try {
+    const { email } = req.body;
+    if (!email) return res.status(400).json({ message: "Email required" });
 
-  const resetToken = jwt.sign({ id: user._id }, process.env.JWT_SECRET!, { expiresIn: "1h" });
-  const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${resetToken}`;
+    const user = await User.findOne({ email });
+    if (!user) return res.status(404).json({ message: "User not found" });
 
-  await sendEmail(user.email, "Password Reset", `<a href="${resetUrl}">Reset Password</a>`);
-  res.json({ message: "Password reset link sent to email" });
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET || "dev_secret", { expiresIn: "1h" });
+    const resetUrl = `${process.env.FRONTEND_URL}/reset-password/${token}`;
+
+    await sendMail({
+      to: user.email,
+      subject: "Password reset",
+      html: `<p>Click to reset password: <a href="${resetUrl}">Reset password</a></p>`
+    });
+
+    res.json({ message: "Reset email sent" });
+  } catch (error: any) {
+    res.status(500).json({ message: "Failed to send reset email", error: error.message || error });
+  }
 };
 
-// @desc Reset Password
 export const resetPassword = async (req: Request, res: Response) => {
-  const { token } = req.params;
-  const { password } = req.body;
-
   try {
-    const decoded: any = jwt.verify(token, process.env.JWT_SECRET!);
-    const user = await User.findById(decoded.id);
-    if (!user) return res.status(404).json({ message: "Invalid token or user not found" });
+    const { token } = req.params;
+    const { password } = req.body;
+    if (!token) return res.status(400).json({ message: "Token required" });
+    if (!password) return res.status(400).json({ message: "Password required" });
 
-    user.password = await bcrypt.hash(password, 10);
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "dev_secret") as any;
+    const user = await User.findById(decoded.id);
+    if (!user) return res.status(404).json({ message: "User not found" });
+
+    user.password = password;
     await user.save();
 
     res.json({ message: "Password reset successful" });
-  } catch (error) {
-    res.status(400).json({ message: "Invalid or expired token" });
+  } catch (error: any) {
+    res.status(400).json({ message: "Invalid or expired token", error: error.message || error });
   }
 };
