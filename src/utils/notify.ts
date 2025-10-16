@@ -1,44 +1,36 @@
+// backend/src/utils/notify.ts
 import nodemailer from "nodemailer";
-import twilio from "twilio";
+import dotenv from "dotenv";
+dotenv.config();
 
-const smtpTransport = nodemailer.createTransport({
+const transporter = nodemailer.createTransport({
   host: process.env.SMTP_HOST,
-  port: Number(process.env.SMTP_PORT),
-  secure: false,
+  port: Number(process.env.SMTP_PORT) || 587,
   auth: {
     user: process.env.SMTP_USER,
     pass: process.env.SMTP_PASS,
   },
 });
 
-const twilioClient = twilio(
-  process.env.TWILIO_ACCOUNT_SID,
-  process.env.TWILIO_AUTH_TOKEN
-);
+export const sendPendingPaymentEmail = async (
+  email: string,
+  name: string,
+  orders: any[]
+) => {
+  const totalDue = orders.reduce((sum, order) => sum + order.totalAmount, 0);
+  const html = `
+    <h2>Dear ${name},</h2>
+    <p>This is a gentle reminder that you have <strong>${orders.length}</strong> pending payment(s).</p>
+    <p>Total Amount Due: <strong>₹${totalDue}</strong></p>
+    <p>Please clear your dues at your earliest convenience.</p>
+    <p>Thank you,</p>
+    <p><strong>Govindarao Store</strong></p>
+  `;
 
-export const sendEmail = async (to: string, subject: string, text: string) => {
-  try {
-    await smtpTransport.sendMail({
-      from: process.env.EMAIL_FROM,
-      to,
-      subject,
-      text,
-    });
-    console.log("📧 Email sent:", to);
-  } catch (error) {
-    console.error("Error sending email:", error);
-  }
-};
-
-export const sendSMS = async (to: string, body: string) => {
-  try {
-    await twilioClient.messages.create({
-      from: process.env.TWILIO_PHONE_NUMBER,
-      to,
-      body,
-    });
-    console.log("📱 SMS sent:", to);
-  } catch (error) {
-    console.error("Error sending SMS:", error);
-  }
+  await transporter.sendMail({
+    from: process.env.EMAIL_FROM,
+    to: email,
+    subject: "Pending Payment Reminder - Govindarao Store",
+    html,
+  });
 };

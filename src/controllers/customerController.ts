@@ -1,66 +1,44 @@
+// backend/src/controllers/customerController.ts
 import { Request, Response } from "express";
-import Customer from "../models/Customer";
+import Customer from "../models/customerModel";
+import Order from "../models/orderModel";
+import { sendPendingPaymentEmail } from "../utils/notify";
 
 // ✅ Get all customers (latest first)
-export const getAllCustomers = async (req: Request, res: Response) => {
+export const getCustomers = async (req: Request, res: Response) => {
   try {
     const customers = await Customer.find().sort({ createdAt: -1 });
-    res.json(customers);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error fetching customers" });
+    res.status(200).json(customers);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
 
-// ✅ Add new customer
+// ✅ Create new customer
 export const createCustomer = async (req: Request, res: Response) => {
   try {
-    const { name, phone, address } = req.body;
-    const existing = await Customer.findOne({ phone });
-
-    if (existing) {
-      return res.status(400).json({ message: "Customer already exists" });
-    }
-
-    const newCustomer = new Customer({ name, phone, address });
-    await newCustomer.save();
-
-    res.status(201).json(newCustomer);
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Error creating customer" });
+    const newCustomer = new Customer(req.body);
+    const savedCustomer = await newCustomer.save();
+    res.status(201).json(savedCustomer);
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
 
-// ✅ Get single customer
-export const getCustomerById = async (req: Request, res: Response) => {
+// ✅ Pending payment reminder
+export const sendPendingPaymentReminder = async (req: Request, res: Response) => {
   try {
-    const customer = await Customer.findById(req.params.id);
+    const { customerId } = req.params;
+    const customer = await Customer.findById(customerId);
     if (!customer) return res.status(404).json({ message: "Customer not found" });
-    res.json(customer);
-  } catch (error) {
-    res.status(500).json({ message: "Error fetching customer" });
-  }
-};
 
-// ✅ Update customer
-export const updateCustomer = async (req: Request, res: Response) => {
-  try {
-    const updated = await Customer.findByIdAndUpdate(req.params.id, req.body, { new: true });
-    if (!updated) return res.status(404).json({ message: "Customer not found" });
-    res.json(updated);
-  } catch (error) {
-    res.status(500).json({ message: "Error updating customer" });
-  }
-};
+    const pendingOrders = await Order.find({ customer: customerId, paymentStatus: "Pending" });
+    if (pendingOrders.length === 0)
+      return res.status(200).json({ message: "No pending payments for this customer." });
 
-// ✅ Delete customer
-export const deleteCustomer = async (req: Request, res: Response) => {
-  try {
-    const deleted = await Customer.findByIdAndDelete(req.params.id);
-    if (!deleted) return res.status(404).json({ message: "Customer not found" });
-    res.json({ message: "Customer deleted" });
-  } catch (error) {
-    res.status(500).json({ message: "Error deleting customer" });
+    await sendPendingPaymentEmail(customer.email, customer.name, pendingOrders);
+    res.status(200).json({ message: "Pending payment reminder sent successfully." });
+  } catch (error: any) {
+    res.status(500).json({ message: error.message });
   }
 };
