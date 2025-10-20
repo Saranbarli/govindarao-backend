@@ -1,32 +1,78 @@
-// backend/src/models/orderModel.ts
-import mongoose, { Schema, Document } from "mongoose";
+import mongoose from "mongoose";
 
-export interface IOrder extends Document {
-  customer: mongoose.Schema.Types.ObjectId;
-  products: { name: string; quantity: number; price: number }[];
-  totalAmount: number;
-  paymentStatus: "Paid" | "Pending";
-  createdAt: Date;
-}
+const orderSchema = new mongoose.Schema({
+  orderId: { type: String, unique: true, required: true },
+  customerId: String,
+  customerName: String,
+  customerEmail: String,
+  customerPhone: String,
 
-const orderSchema = new Schema<IOrder>(
-  {
-    customer: { type: mongoose.Schema.Types.ObjectId, ref: "Customer", required: true },
-    products: [
+  items: [
+    {
+      productId: String,
+      productName: String,
+      quantity: Number,
+      price: Number,
+      bv: Number,
+      subtotal: Number,
+    },
+  ],
+
+  subtotal: Number,
+  discount: Number,
+  memberDiscount: Number,
+  tax: Number,
+  total: Number,
+  bvTotal: Number,
+
+  payment: {
+    status: {
+      type: String,
+      enum: ["pending", "partial", "completed"],
+      default: "pending",
+    },
+    method: String,
+    paidAmount: Number,
+    pendingAmount: Number,
+    transactions: [
       {
-        name: { type: String, required: true },
-        quantity: { type: Number, required: true },
-        price: { type: Number, required: true },
+        amount: Number,
+        method: String,
+        date: Date,
+        reference: String,
       },
     ],
-    totalAmount: { type: Number, required: true },
-    paymentStatus: {
-      type: String,
-      enum: ["Paid", "Pending"],
-      default: "Pending",
-    },
   },
-  { timestamps: true }
-);
 
-export default mongoose.model<IOrder>("Order", orderSchema);
+  fulfillment: {
+    type: {
+      type: String,
+      enum: ["store_pickup"],
+      default: "store_pickup",
+    },
+    status: {
+      type: String,
+      enum: ["pending", "ready", "completed", "cancelled"],
+      default: "pending",
+    },
+    pickupDate: Date,
+    completedDate: Date,
+    notes: String,
+  },
+
+  commissionDistributed: { type: Boolean, default: false },
+  commissionDetails: [
+    {
+      userId: String,
+      userName: String,
+      type: String,
+      amount: Number,
+      percentage: Number,
+    },
+  ],
+
+  orderDate: { type: Date, default: Date.now },
+  updatedAt: Date,
+});
+
+export default mongoose.model("Order", orderSchema);

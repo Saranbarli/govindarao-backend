@@ -1,41 +1,79 @@
-import mongoose, { Document, Schema } from "mongoose";
-import bcrypt from "bcryptjs";
+import mongoose from "mongoose";
 
-export type Role = "admin" | "customer" | "father";
+const userSchema = new mongoose.Schema({
+  userId: { type: String, unique: true, required: true },
+  role: { type: String, enum: ["admin", "member"], default: "member" },
 
-export interface IUser extends Document {
-  name: string;
-  email: string;
-  password: string;
-  role: Role;
-  isVerified: boolean;
-  createdAt: Date;
-  comparePassword(candidate: string): Promise<boolean>;
-}
-
-const userSchema = new Schema<IUser>(
-  {
-    name: { type: String, required: true },
-    email: { type: String, required: true, unique: true, lowercase: true },
-    password: { type: String, required: true },
-    role: { type: String, enum: ["admin", "customer", "father"], default: "customer" },
-    isVerified: { type: Boolean, default: false }
+  personalInfo: {
+    firstName: String,
+    lastName: String,
+    email: { type: String, unique: true, index: true },
+    phone: { type: String, unique: true, index: true },
+    address: {
+      street: String,
+      city: String,
+      state: String,
+      pincode: String,
+      country: { type: String, default: "India" },
+    },
+    dateOfBirth: Date,
+    gender: String,
   },
-  { timestamps: true }
-);
 
-userSchema.pre("save", async function (next) {
-  if (!this.isModified("password")) return next();
-  const salt = await bcrypt.genSalt(10);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  (this as any).password = await bcrypt.hash((this as any).password, salt);
-  next();
+  auth: {
+    password: String,
+    emailVerified: { type: Boolean, default: false },
+    verificationToken: String,
+    resetPasswordToken: String,
+    resetPasswordExpires: Date,
+    lastLogin: Date,
+  },
+
+  mlmInfo: {
+    sponsorId: String,
+    sponsorCode: String,
+    referralCode: String,
+    position: { type: String, enum: ["left", "right"], default: "left" },
+    level: { type: Number, default: 0 },
+    rank: { type: String, default: "Member" },
+    joinDate: { type: Date, default: Date.now },
+    activationDate: Date,
+    leftLegId: String,
+    rightLegId: String,
+    uplineId: String,
+    leftLegCount: { type: Number, default: 0 },
+    rightLegCount: { type: Number, default: 0 },
+    totalDownline: { type: Number, default: 0 },
+    activeDownline: { type: Number, default: 0 },
+    personalSales: { type: Number, default: 0 },
+    leftLegSales: { type: Number, default: 0 },
+    rightLegSales: { type: Number, default: 0 },
+    totalTeamSales: { type: Number, default: 0 },
+  },
+
+  wallet: {
+    balance: { type: Number, default: 0 },
+    totalEarnings: { type: Number, default: 0 },
+    pendingCommission: { type: Number, default: 0 },
+    lastPayoutDate: Date,
+    bankDetails: {
+      accountNumber: String,
+      ifscCode: String,
+      bankName: String,
+      accountHolder: String,
+    },
+  },
+
+  status: {
+    type: String,
+    enum: ["active", "inactive", "suspended"],
+    default: "active",
+  },
+  isEmailVerified: { type: Boolean, default: false },
+  isPhoneVerified: { type: Boolean, default: false },
+
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: Date,
 });
 
-userSchema.methods.comparePassword = function (candidate: string) {
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  return bcrypt.compare(candidate, this.password);
-};
-
-const User = mongoose.model<IUser>("User", userSchema);
-export default User;
+export default mongoose.model("User", userSchema);

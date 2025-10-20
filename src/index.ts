@@ -1,42 +1,30 @@
-// src/index.ts
 import express from "express";
-import morgan from "morgan";
 import cors from "cors";
-import mongoose from "mongoose";
-import authRoutes from "./routes/authRoutes.js";
-import productRoutes from "./routes/productRoutes.js";
-import orderRoutes from "./routes/orderRoutes.js";
+import dotenv from "dotenv";
+import connectDB from "./config/db"; // your MongoDB connection file
+import authRoutes from "./routes/authRoutes";
+import productRoutes from "./routes/productRoutes";
+import orderRoutes from "./routes/orderRoutes";
+import customerRoutes from "./routes/customerRoutes";
+
+dotenv.config();
 
 const app = express();
 
-app.use(express.json());
-app.use(morgan("dev"));
 app.use(cors());
+app.use(express.json());
 
-// API routes
+// Connect to MongoDB
+connectDB();
+
+// Routes
 app.use("/api/auth", authRoutes);
 app.use("/api/products", productRoutes);
 app.use("/api/orders", orderRoutes);
+app.use("/api/customers", customerRoutes);
 
-// basic health
-app.get("/api/health", (_req, res) => res.json({ ok: true }));
-
-// Connect MongoDB
-const MONGO_URI = process.env.MONGO_URI || "";
-if (!MONGO_URI) {
-  // eslint-disable-next-line no-console
-  console.warn("MONGO_URI not set — database won't connect until .env is configured");
-} else {
-  mongoose
-    .connect(MONGO_URI)
-    .then(() => {
-      // eslint-disable-next-line no-console
-      console.log("MongoDB connected");
-    })
-    .catch((err) => {
-      // eslint-disable-next-line no-console
-      console.error("MongoDB connection error:", err);
-    });
-}
+app.get("/", (req, res) => {
+  res.send("Govindarao Store Backend is running 🚀");
+});
 
 export default app;

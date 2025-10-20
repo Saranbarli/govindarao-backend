@@ -1,22 +1,49 @@
-import mongoose, { Document, Schema } from "mongoose";
+import mongoose from "mongoose";
 
-export interface IProduct extends Document {
-  name: string;
-  description?: string;
-  price: number;
-  image?: string;
-  createdAt: Date;
-}
+const productSchema = new mongoose.Schema({
+  productId: { type: String, unique: true, required: true },
+  name: String,
+  description: String,
+  category: String,
+  subCategory: String,
 
-const productSchema = new Schema<IProduct>(
-  {
-    name: { type: String, required: true },
-    description: { type: String },
-    price: { type: Number, required: true, default: 0 },
-    image: { type: String }
+  pricing: {
+    mrp: Number,
+    sellingPrice: Number,
+    memberPrice: Number,
+    bv: Number,
+    pv: Number,
   },
-  { timestamps: true }
-);
 
-const Product = mongoose.model<IProduct>("Product", productSchema);
-export default Product;
+  commission: {
+    retail: Number,
+    binary: Number,
+    direct: Number,
+    level1: Number,
+    level2: Number,
+    level3: Number,
+  },
+
+  inventory: {
+    stock: Number,
+    minStock: Number,
+    unit: String,
+    sku: String,
+  },
+
+  images: [String],
+  featured: { type: Boolean, default: false },
+  status: {
+    type: String,
+    enum: ["active", "inactive", "out_of_stock"],
+    default: "active",
+  },
+  tags: [String],
+  manufacturer: String,
+  certifications: [String],
+
+  createdAt: { type: Date, default: Date.now },
+  updatedAt: Date,
+});
+
+export default mongoose.model("Product", productSchema);
